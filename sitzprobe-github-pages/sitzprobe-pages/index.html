@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Sitzprobe · Sehen Sie Ihren Platz, bevor Sie buchen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+<style>
+  :root{
+    --gold: #c9a05a;
+    --gold-bright: #e8c27a;
+    --wine: #7d1f34;
+    --wine-deep: #4a0f1e;
+    --cream: #efe7d8;
+    --ink: #0a0a0d;
+    --ink-2: #131318;
+    --panel: rgba(16, 15, 19, 0.82);
+    --line: rgba(201, 160, 90, 0.24);
+    --font-display: 'Cormorant Garamond', serif;
+    --font-body: 'Inter', sans-serif;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background: var(--ink); color: var(--cream);
+    font-family: var(--font-body);
+  }
+  #canvas-wrap{ position:fixed; inset:0; }
+  canvas{ display:block; touch-action:none; }
+
+  #loader{
+    position:fixed; inset:0; z-index:50; background: var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; transition: opacity .6s ease;
+  }
+  #loader.hide{ opacity:0; pointer-events:none; }
+  .loader-mark{
+    font-family: var(--font-display); font-size: 15px; letter-spacing: .55em;
+    text-transform: uppercase; color: var(--gold-bright); font-weight:600;
+  }
+  .loader-bar{ width:220px; height:1px; background: var(--line); position:relative; overflow:hidden; }
+  .loader-bar::after{
+    content:''; position:absolute; left:-40%; top:0; bottom:0; width:40%;
+    background: linear-gradient(90deg, transparent, var(--gold-bright), transparent);
+    animation: sweep 1.3s ease-in-out infinite;
+  }
+  @keyframes sweep{ 0%{left:-40%;} 100%{left:100%;} }
+  .loader-sub{ font-size:11px; letter-spacing:.15em; color:#a08a6a; text-transform:uppercase; }
+
+  .topbar{
+    position:fixed; top:0; left:0; right:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 18px 26px; pointer-events:none;
+    background: linear-gradient(to bottom, rgba(10,6,4,.85), transparent);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; pointer-events:auto; }
+  .brand-mark{
+    font-family: var(--font-display); font-weight:700; font-size:24px; letter-spacing:.02em;
+    color: var(--cream);
+  }
+  .brand-mark em{ font-style: normal; color: var(--gold-bright); }
+  .brand-tag{
+    font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#a08a6a;
+    border-left:1px solid var(--line); padding-left:10px; margin-left:2px; line-height:1.3;
+  }
+  .topbar-right{ display:flex; align-items:center; gap:10px; pointer-events:auto; }
+  .venue-chip{
+    display:flex; align-items:center; gap:8px;
+    background: var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:7px 16px 7px 12px; font-size:12px; letter-spacing:.03em;
+  }
+  .venue-chip .dot{ width:6px; height:6px; border-radius:50%; background: var(--gold-bright); box-shadow:0 0 8px var(--gold-bright); }
+  .venue-chip b{ color: var(--gold-bright); font-weight:600; }
+  .lang-switch{
+    display:flex; background: var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:3px; gap:2px;
+  }
+  .lang-btn{
+    border:none; background:transparent; color:#a08a6a; font-family:var(--font-body);
+    font-size:11px; font-weight:600; letter-spacing:.04em; padding:5px 11px; border-radius:999px;
+    cursor:pointer; transition: all .2s ease;
+  }
+  .lang-btn.active{ background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color:#241305; }
+
+  .show-card{
+    position:fixed; left:26px; bottom:26px; z-index:20; max-width:340px;
+    background: var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:18px 20px; backdrop-filter: blur(10px);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .show-card .eyebrow{ font-size:10px; letter-spacing:.16em; text-transform:uppercase; color: var(--gold-bright); margin-bottom:6px; }
+  .show-card h1{ font-family: var(--font-display); font-weight:600; font-size:26px; margin:0 0 4px; line-height:1.1; }
+  .show-card .meta{ font-size:12px; color:#c9bba0; line-height:1.6; }
+  .show-card .hint{ margin-top:12px; font-size:11.5px; color:#8d7a5f; border-top:1px solid var(--line); padding-top:10px; }
+
+  .legend{
+    position:fixed; right:26px; bottom:26px; z-index:20;
+    background: var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; font-size:11.5px; backdrop-filter: blur(10px);
+  }
+  .legend-filter{
+    display:flex; align-items:center; gap:8px; padding-bottom:10px; margin-bottom:8px;
+    border-bottom:1px solid var(--line); cursor:pointer; user-select:none;
+  }
+  .legend-filter input{ accent-color: var(--gold); width:14px; height:14px; cursor:pointer; }
+  .legend-filter span{ font-size:11.5px; color: var(--cream); }
+  .legend-row{ display:flex; align-items:center; gap:8px; padding:4px 0; white-space:nowrap; }
+  .legend-sw{ width:10px; height:10px; border-radius:3px; flex:none; }
+  .legend-price{ margin-left:auto; color:#a08a6a; padding-left:14px; }
+
+  .seat-panel{
+    position:fixed; right:26px; top:96px; z-index:25; width:300px;
+    background: var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:20px; backdrop-filter: blur(12px);
+    transform: translateX(120%); opacity:0; transition: transform .45s cubic-bezier(.2,.8,.2,1), opacity .3s ease;
+  }
+  .seat-panel.show{ transform: translateX(0); opacity:1; }
+  .seat-panel .tier-name{ font-size:10px; letter-spacing:.15em; text-transform:uppercase; color: var(--gold-bright); margin-bottom:8px; }
+  .seat-panel h2{ font-family: var(--font-display); font-size:26px; font-weight:600; margin:0 0 12px; }
+  .seat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; font-size:12px; margin-bottom:12px; }
+  .seat-grid .lbl{ color:#8d7a5f; font-size:10px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:2px; }
+  .seat-grid .val{ font-size:15px; color: var(--cream); font-weight:500; }
+  .sight-note{
+    font-size:11.5px; line-height:1.5; padding:10px 12px; border-radius:10px; margin-bottom:14px;
+    background: rgba(200,162,77,0.08); border:1px solid var(--line); color:#d8c9a8;
+  }
+  .sight-note.warn{ background: rgba(190,90,60,0.1); border-color: rgba(190,90,60,.35); color:#e0b79a; }
+  .price-row{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; }
+  .price-row .amt{ font-family: var(--font-display); font-size:28px; font-weight:700; color: var(--gold-bright); }
+  .price-row .per{ font-size:11px; color:#8d7a5f; }
+  .btn{
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--gold);
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+    color: #241305; font-weight:600; font-size:13px; letter-spacing:.03em; cursor:pointer;
+    font-family: var(--font-body); transition: transform .15s ease, filter .15s ease;
+  }
+  .btn:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+  .btn.ghost{
+    background:transparent; color: var(--cream); border:1px solid var(--line); margin-top:8px; font-weight:500;
+  }
+  .btn.ghost:hover{ border-color: var(--gold); }
+  .demo-note{ text-align:center; font-size:10px; color:#7a6a52; margin-top:10px; letter-spacing:.03em; }
+
+  .pov-bar{
+    position:fixed; top:96px; left:26px; z-index:25;
+    background: var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px 16px; font-size:12px; display:flex; align-items:center; gap:12px;
+    opacity:0; transform: translateY(-10px); pointer-events:none; transition: all .4s ease;
+  }
+  .pov-bar.show{ opacity:1; transform:none; pointer-events:auto; }
+  .pov-bar .label{ color:#a08a6a; letter-spacing:.05em; }
+  .pov-bar b{ color: var(--gold-bright); }
+
+  #tooltip{
+    position:fixed; z-index:30; pointer-events:none; transform: translate(-50%,-130%);
+    background: rgba(15,9,7,.92); border:1px solid var(--line); border-radius:8px;
+    padding:6px 10px; font-size:11px; white-space:nowrap; display:none;
+  }
+  #tooltip b{ color: var(--gold-bright); }
+
+  #toast{
+    position:fixed; left:50%; bottom:34px; z-index:35; transform: translate(-50%, 12px);
+    background: rgba(15,9,7,.94); border:1px solid rgba(190,90,60,.4); color:#e0b79a;
+    padding:10px 18px; border-radius:999px; font-size:12.5px; opacity:0; pointer-events:none;
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  #toast.show{ opacity:1; transform: translate(-50%, 0); }
+
+  .welcome{
+    position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at center, rgba(30,15,10,.55), rgba(6,3,2,.86));
+    transition: opacity .5s ease; backdrop-filter: blur(2px);
+  }
+  .welcome.hide{ opacity:0; pointer-events:none; }
+  .welcome-card{ text-align:center; max-width:480px; padding:0 20px; }
+  .welcome-card .eyebrow{ font-size:11px; letter-spacing:.2em; text-transform:uppercase; color: var(--gold-bright); margin-bottom:14px; }
+  .welcome-card h1{ font-family: var(--font-display); font-size:44px; font-weight:700; margin:0 0 14px; line-height:1.05; }
+  .welcome-card p{ font-size:14px; color:#c9bba0; line-height:1.7; margin:0 0 26px; }
+  .welcome-card .btn{ display:inline-block; width:auto; padding:13px 34px; }
+
+  @media (max-width: 680px){
+    .legend{ display:none; }
+    .show-card{ left:14px; right:14px; bottom:14px; max-width:none; }
+    .seat-panel{ right:14px; left:14px; width:auto; top:auto; bottom:14px; transform: translateY(120%); }
+    .seat-panel.show{ transform: translateY(0); }
+    .pov-bar{ left:14px; top:82px; }
+    .welcome-card h1{ font-size:32px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-mark">Sitzprobe</div>
+  <div class="loader-bar"></div>
+  <div class="loader-sub" data-i18n="loaderSub">Der Zuschauerraum wird aufgebaut …</div>
+</div>
+
+<div class="welcome" id="welcome">
+  <div class="welcome-card">
+    <div class="eyebrow" data-i18n="welcomeEyebrow">Konzept&#8209;Demo &middot; inspiriert von der Grazer Oper</div>
+    <h1 data-i18n="welcomeTitle">Sehen Sie Ihren Platz,<br/>bevor Sie buchen.</h1>
+    <p data-i18n="welcomeBody">Ein prozedural erzeugter Zuschauerraum im Stil eines Ranglogentheaters &mdash; klicken Sie auf einen beliebigen Platz im Parkett, Rang oder der Galerie, und erleben Sie die Sicht auf die Bühne aus der Ich&#8209;Perspektive.</p>
+    <button class="btn" id="enter-btn" data-i18n="welcomeBtn">Zuschauerraum betreten</button>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">Sitz<em>probe</em></div>
+    <div class="brand-tag" data-i18n="brandTag">Sicht&nbsp;pr&uuml;fen<br/>vor dem&nbsp;Kauf</div>
+  </div>
+  <div class="topbar-right">
+    <div class="venue-chip"><span class="dot"></span><span data-i18n="venueChip">inspiriert von <b>Opernhaus&nbsp;Graz</b></span></div>
+    <div class="lang-switch">
+      <button class="lang-btn active" id="lang-de" data-lang="de">DE</button>
+      <button class="lang-btn" id="lang-en" data-lang="en">EN</button>
+    </div>
+  </div>
+</div>
+
+<div class="show-card" id="show-card">
+  <div class="eyebrow" data-i18n="showEyebrow">Konzept-Vorstellung</div>
+  <h1 data-i18n="showTitle">Die Zauberfl&ouml;te</h1>
+  <div class="meta" data-i18n="showMeta">W. A. Mozart &middot; Oper in zwei Akten<br/>Demo-Termin &middot; 19:30 Uhr &middot; Gro&szlig;es Haus</div>
+  <div class="hint" data-i18n="showHint">Klicken Sie einen Platz an, um die Sicht auf die B&uuml;hne zu pr&uuml;fen. Ziehen zum Drehen &middot; Scrollen zum Zoomen.</div>
+</div>
+
+<div class="legend" id="legend">
+  <label class="legend-filter">
+    <input type="checkbox" id="filter-toggle" />
+    <span data-i18n="filterLabel">Nur verf&uuml;gbare Pl&auml;tze zeigen</span>
+  </label>
+  <div id="legend-rows"></div>
+</div>
+
+<div class="pov-bar" id="pov-bar">
+  <span class="label" data-i18n="povFromLabel">Sicht&nbsp;aus</span> <b id="pov-label">&mdash;</b>
+  <span style="color:#5a4c3a">|</span>
+  <span class="label" data-i18n="povEscHint">Esc zum Zur&uuml;ckkehren</span>
+</div>
+
+<div class="seat-panel" id="seat-panel">
+  <div class="tier-name" id="p-tier">PARKETT</div>
+  <h2 id="p-title">Reihe 6 &middot; Platz 12</h2>
+  <div class="seat-grid">
+    <div><div class="lbl" data-i18n="panelBereich">Bereich</div><div class="val" id="p-area">Parkett Mitte</div></div>
+    <div><div class="lbl" data-i18n="panelReihe">Reihe</div><div class="val" id="p-row">6</div></div>
+    <div><div class="lbl" data-i18n="panelPlatz">Platz</div><div class="val" id="p-seat">12</div></div>
+    <div><div class="lbl" data-i18n="panelSicht">Sicht</div><div class="val" id="p-sight">Frei</div></div>
+  </div>
+  <div class="sight-note" id="p-note">Uneingeschr&auml;nkte Sicht auf die gesamte B&uuml;hne, zentrale H&ouml;henposition.</div>
+  <div class="price-row"><span class="amt" id="p-price">&euro;89</span><span class="per" data-i18n="priceUnit">pro Platz &middot; Demo</span></div>
+  <button class="btn ghost" id="p-back" data-i18n="backBtn">Zur&uuml;ck zur &Uuml;bersicht</button>
+  <div class="demo-note" data-i18n="demoNote">Konzept-Demo &middot; keine echten Tickets</div>
+</div>
+
+<div id="toast"></div>
+<div id="tooltip"></div>
+<div id="canvas-wrap"></div>
+
+<script>
+const OrbitControls = THREE.OrbitControls;
+
+const I18N = {
+  de: {
+    loaderSub: 'Der Zuschauerraum wird aufgebaut …',
+    welcomeEyebrow: 'Konzept&#8209;Demo &middot; inspiriert von der Grazer Oper',
+    welcomeTitle: 'Sehen Sie Ihren Platz,<br/>bevor Sie buchen.',
+    welcomeBody: 'Ein prozedural erzeugter Zuschauerraum im Stil eines Ranglogentheaters &mdash; klicken Sie auf einen beliebigen Platz im Parkett, Rang oder der Galerie, und erleben Sie die Sicht auf die Bühne aus der Ich&#8209;Perspektive.',
+    welcomeBtn: 'Zuschauerraum betreten',
+    brandTag: 'Sicht&nbsp;pr\u00fcfen<br/>vor dem&nbsp;Kauf',
+    venueChip: 'inspiriert von <b>Opernhaus&nbsp;Graz</b>',
+    showEyebrow: 'Konzept-Vorstellung',
+    showTitle: 'Die Zauberfl\u00f6te',
+    showMeta: 'W. A. Mozart &middot; Oper in zwei Akten<br/>Demo-Termin &middot; 19:30 Uhr &middot; Gro&szlig;es Haus',
+    showHint: 'Klicken Sie einen Platz an, um die Sicht auf die B\u00fchne zu pr\u00fcfen. Ziehen zum Drehen &middot; Scrollen zum Zoomen.',
+    filterLabel: 'Nur verf\u00fcgbare Pl\u00e4tze zeigen',
+    povFromLabel: 'Sicht&nbsp;aus',
+    povEscHint: 'Esc zum Zur\u00fcckkehren',
+    panelBereich: 'Bereich', panelReihe: 'Reihe', panelPlatz: 'Platz', panelSicht: 'Sicht',
+    priceUnit: 'pro Platz &middot; Demo',
+    backBtn: 'Zur\u00fcck zur \u00dcbersicht',
+    demoNote: 'Konzept-Demo &middot; keine echten Tickets',
+    rowSeatTitle: function(r,n){ return 'Reihe ' + r + ' \u00b7 Platz ' + n; },
+    tierLabel: { parkett:'Parkett', rang1:'1. Rang \u2013 Logen', rang2:'2. Rang \u2013 Logen', galerie:'3. Rang / Galerie' },
+    areaCentre:'Mitte', areaSide:'Seite', areaSideBox:'Seitenloge',
+    sightFree:'Frei', sightRestricted:'Eingeschr\u00e4nkt',
+    noteRestricted: 'Seitliche Loge: die B\u00fchne ist teilweise durch die Br\u00fcstung und den Logenrand eingeschr\u00e4nkt sichtbar.',
+    noteParkett: 'Uneingeschr\u00e4nkte Sicht auf die gesamte B\u00fchne, zentrale H\u00f6henposition.',
+    noteUpper: 'Freie Sicht von oben \u2014 guter \u00dcberblick \u00fcber B\u00fchne und Orchestergraben.',
+    toastSold: 'Dieser Platz ist bereits verkauft.',
+    soldWord: 'Verkauft',
+    priceFrom: 'ab'
+  },
+  en: {
+    loaderSub: 'Building the auditorium …',
+    welcomeEyebrow: 'Concept demo &middot; inspired by Graz Opera',
+    welcomeTitle: 'See your seat,<br/>before you book.',
+    welcomeBody: 'A procedurally generated auditorium in the style of a tiered-box theatre &mdash; click any seat in the Stalls, a tier of Boxes, or the Gallery, and experience the view of the stage in first person.',
+    welcomeBtn: 'Enter the auditorium',
+    brandTag: 'Check the&nbsp;view<br/>before you&nbsp;buy',
+    venueChip: 'inspired by <b>Graz&nbsp;Opera</b>',
+    showEyebrow: 'Concept performance',
+    showTitle: 'The Magic Flute',
+    showMeta: 'W. A. Mozart &middot; Opera in two acts<br/>Demo showtime &middot; 7:30 PM &middot; Main House',
+    showHint: 'Click a seat to check the view of the stage. Drag to look around &middot; Scroll to zoom.',
+    filterLabel: 'Just show available seats',
+    povFromLabel: 'View&nbsp;from',
+    povEscHint: 'Press Esc to return',
+    panelBereich: 'Area', panelReihe: 'Row', panelPlatz: 'Seat', panelSicht: 'View',
+    priceUnit: 'per seat &middot; Demo',
+    backBtn: 'Back to overview',
+    demoNote: 'Concept demo &middot; no real tickets',
+    rowSeatTitle: function(r,n){ return 'Row ' + r + ' \u00b7 Seat ' + n; },
+    tierLabel: { parkett:'Stalls', rang1:'1st Tier \u2013 Boxes', rang2:'2nd Tier \u2013 Boxes', galerie:'Upper Circle / Gallery' },
+    areaCentre:'Centre', areaSide:'Side', areaSideBox:'Side Box',
+    sightFree:'Clear', sightRestricted:'Restricted',
+    noteRestricted: 'Side box: the stage is partly obstructed by the balcony rail and box edge.',
+    noteParkett: 'Unobstructed view of the full stage, centred eye level.',
+    noteUpper: 'Clear view from above \u2014 good overview of the stage and orchestra pit.',
+    toastSold: 'This seat is already sold.',
+    soldWord: 'Sold',
+    priceFrom: 'from'
+  }
+};
+let lang = 'de';
+function L(){ return I18N[lang]; }
+
+const PALETTE = { gold: 0xc8a24d, ink: 0x0c0705 };
+
+const TIERS = [
+  { key:'parkett', color:0xb23347, price:89,  y:0.02,  restricted:false },
+  { key:'rang1',   color:0xd6883b, price:129, y:4.6,   restricted:true  },
+  { key:'rang2',   color:0xc8a24d, price:69,  y:8.6,   restricted:true  },
+  { key:'galerie', color:0x7d93a8, price:35,  y:12.4,  restricted:false }
+];
+
+function seededRandom(str){
+  let h = 1779033703 ^ str.length;
+  for(let i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  h = Math.imul(h ^ (h >>> 16), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+const wrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(PALETTE.ink, 0.016);
+
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth/window.innerHeight, 0.1, 300);
+const OVERVIEW_POS = new THREE.Vector3(0, 19, 34);
+const OVERVIEW_TARGET = new THREE.Vector3(0, 6, -2);
+camera.position.copy(OVERVIEW_POS);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+wrap.appendChild(renderer.domElement);
+
+const STAGE_Z = -13;
+const FOCAL = new THREE.Vector3(0, 6, STAGE_Z + 3);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(OVERVIEW_TARGET);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 8;
+controls.maxDistance = 55;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.update();
+
+scene.add(new THREE.AmbientLight(0x4a3420, 0.55));
+
+const houseGlow = new THREE.PointLight(0xffcf8a, 2.2, 60, 2);
+houseGlow.position.set(0, 15, -2);
+scene.add(houseGlow);
+
+const chandelier = new THREE.PointLight(0xffdca0, 3.5, 40, 2);
+chandelier.position.set(0, 17.5, 4);
+chandelier.castShadow = true;
+scene.add(chandelier);
+const chandelierMesh = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.55, 1),
+  new THREE.MeshStandardMaterial({ color:0xffe6ad, emissive:0xffb24a, emissiveIntensity:1.4, metalness:0.6, roughness:0.25 })
+);
+chandelierMesh.position.copy(chandelier.position);
+scene.add(chandelierMesh);
+
+const stageSpot = new THREE.SpotLight(0xfff2d6, 8, 40, Math.PI/6, 0.4, 1.4);
+stageSpot.position.set(0, 16, -2);
+stageSpot.target.position.set(0, 2, STAGE_Z);
+stageSpot.castShadow = true;
+scene.add(stageSpot, stageSpot.target);
+
+const rimLight = new THREE.DirectionalLight(0xffe2b0, 0.6);
+rimLight.position.set(-8, 10, 6);
+scene.add(rimLight);
+
+const mat = {
+  gold: new THREE.MeshStandardMaterial({ color:PALETTE.gold, metalness:0.75, roughness:0.32 }),
+  floor: new THREE.MeshStandardMaterial({ color:0x2a1712, roughness:0.9 }),
+  curtain: new THREE.MeshStandardMaterial({ color:0x7a1626, roughness:0.75, side:THREE.DoubleSide }),
+  stageFloor: new THREE.MeshStandardMaterial({ color:0x1b120f, roughness:0.6, metalness:0.2 })
+};
+
+const hall = new THREE.Group();
+scene.add(hall);
+
+const floor = new THREE.Mesh(new THREE.CircleGeometry(37, 48), mat.floor);
+floor.rotation.x = -Math.PI/2;
+floor.position.y = -0.05;
+floor.receiveShadow = true;
+hall.add(floor);
+
+function addTierFacade(radius, y, color){
+  const geo = new THREE.CylinderGeometry(radius, radius, 0.9, 48, 1, true, THREE.MathUtils.degToRad(-95), THREE.MathUtils.degToRad(190));
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness:0.5, metalness:0.35 }));
+  m.position.set(0, y, 1);
+  hall.add(m);
+  const trimGeo = new THREE.TorusGeometry(radius, 0.06, 8, 64, THREE.MathUtils.degToRad(190));
+  const trim = new THREE.Mesh(trimGeo, mat.gold);
+  trim.rotation.x = Math.PI/2;
+  trim.rotation.y = THREE.MathUtils.degToRad(5);
+  trim.position.set(0, y + 0.46, 1);
+  hall.add(trim);
+}
+addTierFacade(40, 4.1, 0x8a2e1f);
+addTierFacade(40, 8.1, 0x6e1423);
+addTierFacade(40, 11.9, 0x4a0d17);
+
+const archGroup = new THREE.Group();
+const archShape = new THREE.Shape();
+archShape.moveTo(-8, 0);
+archShape.lineTo(-8, 9);
+archShape.quadraticCurveTo(0, 12.5, 8, 9);
+archShape.lineTo(8, 0);
+archShape.lineTo(7, 0);
+archShape.lineTo(7, 8.6);
+archShape.quadraticCurveTo(0, 11.6, -7, 8.6);
+archShape.lineTo(-7, 0);
+archShape.closePath();
+const archMesh = new THREE.Mesh(new THREE.ExtrudeGeometry(archShape, { depth:0.6, bevelEnabled:true, bevelSize:0.06, bevelThickness:0.06 }), mat.gold);
+archMesh.position.set(0, 0, STAGE_Z + 4.3);
+archGroup.add(archMesh);
+hall.add(archGroup);
+
+const stageFloor = new THREE.Mesh(new THREE.BoxGeometry(17, 0.3, 11), mat.stageFloor);
+stageFloor.position.set(0, 0.15, STAGE_Z);
+stageFloor.receiveShadow = true;
+hall.add(stageFloor);
+
+const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(18, 11), new THREE.MeshStandardMaterial({ color:0x140a12, roughness:0.9 }));
+backdrop.position.set(0, 5.6, STAGE_Z - 5.4);
+hall.add(backdrop);
+
+const curtainGroup = new THREE.Group();
+const curtainGeo = new THREE.PlaneGeometry(4.6, 9.4, 12, 1);
+const posAttr = curtainGeo.attributes.position;
+for(let i=0;i<posAttr.count;i++){
+  const x = posAttr.getX(i);
+  posAttr.setZ(i, Math.sin(x*2.2)*0.28);
+}
+curtainGeo.computeVertexNormals();
+const curtainL = new THREE.Mesh(curtainGeo, mat.curtain);
+curtainL.position.set(-4.6, 4.9, STAGE_Z + 1.4);
+const curtainR = curtainL.clone();
+curtainR.position.x = 4.6;
+curtainL.castShadow = curtainR.castShadow = true;
+curtainGroup.add(curtainL, curtainR);
+hall.add(curtainGroup);
+
+const performers = new THREE.Group();
+function makeFigure(x, hue){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.1, 12), new THREE.MeshStandardMaterial({ color:hue, roughness:0.6 }));
+  body.position.y = 1.05;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), new THREE.MeshStandardMaterial({ color:0xe8caa8, roughness:0.6 }));
+  head.position.y = 2.28;
+  g.add(body, head);
+  g.position.set(x, 0.3, STAGE_Z);
+  g.castShadow = true;
+  return g;
+}
+performers.add(makeFigure(-2.4, 0x3d5a80), makeFigure(1.6, 0x9c2c3a), makeFigure(3.6, 0x2f3e2a));
+hall.add(performers);
+
+const pit = new THREE.Mesh(new THREE.BoxGeometry(15, 1.1, 2.4), new THREE.MeshStandardMaterial({ color:0x0c0705, roughness:0.9 }));
+pit.position.set(0, -0.5, STAGE_Z + 6.2);
+hall.add(pit);
+
+const seatBaseGeo = new THREE.BoxGeometry(0.46, 0.46, 0.46);
+seatBaseGeo.translate(0, 0.23, 0);
+const seatBackGeo = new THREE.BoxGeometry(0.46, 0.5, 0.08);
+seatBackGeo.translate(0, 0.7, -0.19);
+const seatData = [];
+const dummy = new THREE.Object3D();
+
+function buildTierSeats(tier, tierIndex){
+  const rows = tier.key === 'parkett' ? 12 : (tier.key === 'galerie' ? 6 : 5);
+  const baseRadius = tier.key === 'parkett' ? 9.0 : 25.0;
+  const rowGap = tier.key === 'parkett' ? 0.92 : 0.78;
+  const yLift = tier.key === 'parkett' ? 0.16 : 0.14;
+  const MIN_SEAT_Z = -4.5; // keep every row clear of the pit/stage line
+  const DELTA = MIN_SEAT_Z - FOCAL.z;
+
+  for(let r=0; r<rows; r++){
+    const radius = baseRadius + r*rowGap;
+    // widen the arc gradually with radius so each row curves smoothly all the way to
+    // its own edge instead of being cut off (that cutoff is what bunched seats up before)
+    const cosHalf = Math.min(0.92, Math.max(0.05, DELTA/radius));
+    const spanDeg = Math.min(170, THREE.MathUtils.radToDeg(Math.acos(cosHalf)) * 2);
+    const seatsInRow = Math.max(10, Math.round((spanDeg/180) * (16 + r*2.1)));
+    const startDeg = -spanDeg/2;
+    for(let s=0; s<seatsInRow; s++){
+      const t = seatsInRow === 1 ? 0.5 : s/(seatsInRow-1);
+      const deg = startDeg + t*spanDeg;
+      const rad = THREE.MathUtils.degToRad(deg);
+      if(tier.key==='parkett' && Math.abs(t-0.5) < 0.015 && r>1) continue;
+
+      const x = Math.sin(rad) * radius;
+      const z = FOCAL.z + Math.cos(rad) * radius;
+      const y = tier.y + r*yLift;
+
+      const angleToFocal = Math.atan2(FOCAL.x - x, FOCAL.z - z);
+      const sideFactor = Math.abs(t-0.5)*2;
+      const restricted = tier.restricted && sideFactor > 0.72;
+      const sideArea = tier.key==='parkett' ? sideFactor >= 0.34 : sideFactor > 0.72;
+      const sold = seededRandom(tier.key+'-'+(r+1)+'-'+(s+1)) < 0.15;
+
+      seatData.push({
+        pos: new THREE.Vector3(x,y,z),
+        rotY: angleToFocal,
+        tier: tier.key, tierIndex, price: tier.price,
+        row: r+1, num: s+1, restricted, sold, sideArea
+      });
+    }
+  }
+}
+TIERS.forEach(buildTierSeats);
+
+function areaLabel(d){
+  const dict = L();
+  const tierName = dict.tierLabel[d.tier];
+  if(d.tier==='parkett') return tierName + ' ' + (d.sideArea ? dict.areaSide : dict.areaCentre);
+  return tierName + ' ' + (d.sideArea ? dict.areaSideBox : dict.areaCentre);
+}
+
+const SOLD_COLOR = 0x4b4b4f;
+const seatMeshesByGroup = {};
+TIERS.forEach(tier=>{
+  ['available','sold'].forEach(state=>{
+    const subset = seatData.filter(d=>d.tier===tier.key && (state==='sold' ? d.sold : !d.sold));
+    if(!subset.length) return;
+    const color = state==='sold' ? SOLD_COLOR : tier.color;
+    const seatMat = new THREE.MeshStandardMaterial({
+      color, roughness: state==='sold' ? 0.85 : 0.55, metalness: state==='sold' ? 0.02 : 0.12
+    });
+    const baseMesh = new THREE.InstancedMesh(seatBaseGeo, seatMat, subset.length);
+    const backMesh = new THREE.InstancedMesh(seatBackGeo, seatMat, subset.length);
+    baseMesh.castShadow = backMesh.castShadow = true;
+    seatMeshesByGroup[tier.key+':'+state] = { baseMesh, backMesh, data: subset, isSold: state==='sold' };
+    hall.add(baseMesh, backMesh);
+  });
+});
+
+Object.values(seatMeshesByGroup).forEach(group=>{
+  group.data.forEach((d, i)=>{
+    dummy.position.copy(d.pos);
+    dummy.rotation.set(0, d.rotY, 0);
+    dummy.updateMatrix();
+    group.baseMesh.setMatrixAt(i, dummy.matrix);
+    group.backMesh.setMatrixAt(i, dummy.matrix);
+  });
+  group.baseMesh.instanceMatrix.needsUpdate = true;
+  group.backMesh.instanceMatrix.needsUpdate = true;
+});
+
+const meshUUIDtoGroup = {};
+Object.values(seatMeshesByGroup).forEach(group=>{
+  meshUUIDtoGroup[group.baseMesh.uuid] = group;
+});
+
+function renderLegend(){
+  const dict = L();
+  const rowsEl = document.getElementById('legend-rows');
+  rowsEl.innerHTML = '';
+  TIERS.forEach(t=>{
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = '<span class="legend-sw" style="background:#' + t.color.toString(16).padStart(6,'0') + '"></span>' + dict.tierLabel[t.key] + '<span class="legend-price">' + dict.priceFrom + ' &euro;' + t.price + '</span>';
+    rowsEl.appendChild(row);
+  });
+  const soldRow = document.createElement('div');
+  soldRow.className = 'legend-row';
+  soldRow.innerHTML = '<span class="legend-sw" style="background:#' + SOLD_COLOR.toString(16).padStart(6,'0') + '"></span>' + dict.soldWord;
+  rowsEl.appendChild(soldRow);
+}
+renderLegend();
+
+document.getElementById('filter-toggle').addEventListener('change', (e)=>{
+  const hideSold = e.target.checked;
+  Object.values(seatMeshesByGroup).forEach(group=>{
+    if(group.isSold){
+      group.baseMesh.visible = !hideSold;
+      group.backMesh.visible = !hideSold;
+    }
+  });
+});
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const tooltip = document.getElementById('tooltip');
+const seatPanel = document.getElementById('seat-panel');
+const showCard = document.getElementById('show-card');
+const povBar = document.getElementById('pov-bar');
+const povLabel = document.getElementById('pov-label');
+
+let currentSeat = null;
+let inPOV = false;
+let hoverData = null;
+
+function onPointerMove(e){
+  if(inPOV || isFlying) { tooltip.style.display='none'; return; }
+  pointer.x = (e.clientX/window.innerWidth)*2-1;
+  pointer.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(pointer, camera);
+  const pickable = Object.values(seatMeshesByGroup).map(g=>g.baseMesh).filter(m=>m.visible);
+  const hits = raycaster.intersectObjects(pickable);
+  if(hits.length){
+    const group = meshUUIDtoGroup[hits[0].object.uuid];
+    const d = group.data[hits[0].instanceId];
+    hoverData = d;
+    tooltip.style.display = 'block';
+    tooltip.style.left = e.clientX + 'px';
+    tooltip.style.top = e.clientY + 'px';
+    tooltip.innerHTML = d.sold
+      ? '<b>' + L().soldWord + '</b> &middot; ' + areaLabel(d) + ' &middot; R.' + d.row + '/' + d.num
+      : '<b>' + areaLabel(d) + '</b> &middot; R.' + d.row + '/' + d.num + ' &middot; &euro;' + d.price;
+    document.body.style.cursor = d.sold ? 'not-allowed' : 'pointer';
+  } else {
+    hoverData = null;
+    tooltip.style.display = 'none';
+    document.body.style.cursor = 'default';
+  }
+}
+
+let toastTimer = null;
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), 1800);
+}
+
+function onClick(e){
+  if(isFlying) return;
+  if(inPOV) return;
+  if(!hoverData) return;
+  if(hoverData.sold){ showToast(L().toastSold); return; }
+  selectSeat(hoverData);
+}
+
+renderer.domElement.addEventListener('pointermove', onPointerMove);
+renderer.domElement.addEventListener('click', onClick);
+
+let isFlying = false;
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+function flyCamera(toPos, toTarget, duration, onDone){
+  isFlying = true;
+  controls.enabled = false;
+  const fromPos = camera.position.clone();
+  const fromTarget = controls.target.clone();
+  const start = performance.now();
+  function step(now){
+    const t = Math.min(1, (now-start)/duration);
+    const e = easeInOutCubic(t);
+    camera.position.lerpVectors(fromPos, toPos, e);
+    controls.target.lerpVectors(fromTarget, toTarget, e);
+    controls.update();
+    if(t<1){ requestAnimationFrame(step); }
+    else { isFlying = false; if(onDone) onDone(); }
+  }
+  requestAnimationFrame(step);
+}
+
+let povEyePos = new THREE.Vector3();
+let povBaseDir = new THREE.Vector3();
+let povYaw = 0, povPitch = 0;
+let isPovDragging = false;
+let povDragStartX = 0, povDragStartY = 0, povDragStartYaw = 0, povDragStartPitch = 0;
+
+function updatePovLook(){
+  const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), povYaw);
+  const dir = povBaseDir.clone().applyQuaternion(yawQuat);
+  const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0)).normalize();
+  const pitchQuat = new THREE.Quaternion().setFromAxisAngle(right, povPitch);
+  dir.applyQuaternion(pitchQuat);
+  camera.position.copy(povEyePos);
+  camera.lookAt(povEyePos.clone().add(dir));
+}
+
+renderer.domElement.addEventListener('pointerdown', (e)=>{
+  if(!inPOV || isFlying) return;
+  isPovDragging = true;
+  povDragStartX = e.clientX; povDragStartY = e.clientY;
+  povDragStartYaw = povYaw; povDragStartPitch = povPitch;
+});
+window.addEventListener('pointermove', (e)=>{
+  if(!inPOV || !isPovDragging) return;
+  const dx = e.clientX - povDragStartX, dy = e.clientY - povDragStartY;
+  povYaw = THREE.MathUtils.clamp(povDragStartYaw - dx*0.0045, -1.3, 1.3);
+  povPitch = THREE.MathUtils.clamp(povDragStartPitch - dy*0.0035, -0.55, 0.6);
+  updatePovLook();
+});
+window.addEventListener('pointerup', ()=>{ isPovDragging = false; });
+
+function selectSeat(d){
+  currentSeat = d;
+  updateSeatPanel(d);
+  seatPanel.classList.add('show');
+  showCard.style.opacity = '0';
+  showCard.style.transform = 'translateY(10px)';
+
+  const eyePos = d.pos.clone().add(new THREE.Vector3(0, 1.05, 0.15));
+  const lookAt = new THREE.Vector3(
+    FOCAL.x, 5.4,
+    STAGE_Z + (d.restricted ? (d.pos.x>0? -1.6:1.6) : 0)
+  );
+  controls.enabled = false;
+  flyCamera(eyePos, lookAt, 1100, ()=>{
+    inPOV = true;
+    povBar.classList.add('show');
+    povLabel.textContent = areaLabel(d) + ' \u00b7 ' + L().rowSeatTitle(d.row, d.num);
+    povEyePos.copy(eyePos);
+    povBaseDir.copy(lookAt.clone().sub(eyePos).normalize());
+    povYaw = 0; povPitch = 0;
+    updatePovLook();
+  });
+}
+
+function backToOverview(){
+  inPOV = false;
+  currentSeat = null;
+  seatPanel.classList.remove('show');
+  povBar.classList.remove('show');
+  showCard.style.opacity = '1';
+  showCard.style.transform = 'none';
+  controls.minDistance = 8;
+  controls.maxDistance = 55;
+  flyCamera(OVERVIEW_POS, OVERVIEW_TARGET, 1000, ()=>{ controls.enabled = true; });
+}
+
+document.getElementById('p-back').addEventListener('click', backToOverview);
+
+window.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape' && currentSeat){ backToOverview(); }
+});
+
+function updateSeatPanel(d){
+  const dict = L();
+  document.getElementById('p-tier').textContent = dict.tierLabel[d.tier].toUpperCase();
+  document.getElementById('p-title').textContent = dict.rowSeatTitle(d.row, d.num);
+  document.getElementById('p-area').textContent = areaLabel(d);
+  document.getElementById('p-row').textContent = d.row;
+  document.getElementById('p-seat').textContent = d.num;
+  document.getElementById('p-sight').textContent = d.restricted ? dict.sightRestricted : dict.sightFree;
+  document.getElementById('p-price').textContent = '\u20ac' + d.price;
+  const note = document.getElementById('p-note');
+  if(d.restricted){
+    note.className = 'sight-note warn';
+    note.textContent = dict.noteRestricted;
+  } else {
+    note.className = 'sight-note';
+    note.textContent = d.tier==='parkett' ? dict.noteParkett : dict.noteUpper;
+  }
+}
+
+function applyLanguage(newLang){
+  lang = newLang;
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const key = el.getAttribute('data-i18n');
+    const dict = L();
+    if(typeof dict[key] === 'string') el.innerHTML = dict[key];
+  });
+  document.getElementById('lang-de').classList.toggle('active', lang==='de');
+  document.getElementById('lang-en').classList.toggle('active', lang==='en');
+  renderLegend();
+  if(currentSeat){
+    updateSeatPanel(currentSeat);
+    povLabel.textContent = areaLabel(currentSeat) + ' \u00b7 ' + L().rowSeatTitle(currentSeat.row, currentSeat.num);
+  }
+}
+document.getElementById('lang-de').addEventListener('click', ()=>applyLanguage('de'));
+document.getElementById('lang-en').addEventListener('click', ()=>applyLanguage('en'));
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  chandelierMesh.rotation.y = t*0.15;
+  chandelier.intensity = 3.2 + Math.sin(t*1.7)*0.25;
+  curtainL.rotation.y = Math.sin(t*0.3)*0.02;
+  curtainR.rotation.y = Math.sin(t*0.3+1)*-0.02;
+  performers.children.forEach((f,i)=>{ f.rotation.y = Math.sin(t*0.4+i)*0.25; });
+  stageSpot.intensity = 7.4 + Math.sin(t*2.2)*0.6;
+  if(!isFlying && !inPOV) controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('load', ()=>{
+  setTimeout(()=>{ document.getElementById('loader').classList.add('hide'); }, 500);
+});
+document.getElementById('enter-btn').addEventListener('click', ()=>{
+  document.getElementById('welcome').classList.add('hide');
+});
+setTimeout(()=>{ document.getElementById('loader').classList.add('hide'); }, 1800);
+</script>
+</body>
+</html>
